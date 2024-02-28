@@ -55,6 +55,11 @@ func (srv *Server) Serve(ctx context.Context, ln *quic.Listener) error {
 	}
 	defer srv.removeCloser(closer)
 
+	h := srv.Handler
+	if h == nil {
+		h = NewStreamMux()
+	}
+
 	var tempDelay time.Duration // how long to sleep on accept failure
 	for {
 		conn, err := ln.Accept(ctx)
@@ -79,8 +84,7 @@ func (srv *Server) Serve(ctx context.Context, ln *quic.Listener) error {
 			return err
 		}
 
-		trunk := srv.newTrunkConn(conn)
-		go trunk.serve()
+		go srv.serveConn(h, conn)
 	}
 }
 
@@ -90,10 +94,6 @@ func (srv *Server) Close() error {
 	}
 
 	return srv.closeCloser()
-}
-
-func (srv *Server) newTrunkConn(conn quic.Connection) *trunkConn {
-	return &trunkConn{conn: conn, srv: srv}
 }
 
 func (srv *Server) closeCloser() error {
@@ -138,6 +138,11 @@ func (srv *Server) isClosed() bool {
 func (srv *Server) newOnceCloser(c io.Closer) io.Closer {
 	once := sync.OnceValue(c.Close)
 	return &onceCloser{once: once}
+}
+
+func (srv *Server) serveConn(h Handler, conn quic.Connection) {
+	defer func() { recover() }()
+	h.Handle(conn)
 }
 
 type onceCloser struct {
