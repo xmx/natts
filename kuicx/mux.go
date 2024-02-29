@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"strconv"
 	"sync"
@@ -93,7 +94,7 @@ func (sm *StreamMux) DialContext(ctx context.Context, network, address string) (
 		return nil, &net.OpError{Op: "dial", Net: network, Err: errors.New("no route to host: " + host)}
 	}
 	conn := ic.conn
-	stm, err := conn.OpenStream()
+	stm, err := conn.OpenStreamSync(ctx)
 	if err != nil {
 		return nil, &net.OpError{Op: "dial", Net: network, Err: errors.New("can not open stream: " + address)}
 	}
@@ -114,8 +115,9 @@ func (sm *StreamMux) DialContext(ctx context.Context, network, address string) (
 	resp := make([]byte, 1) // 读取响应消息
 	if _, err = stm.Read(resp); err != nil || resp[0] != 0 {
 		_ = stm.Close()
-		if err == nil && resp[0] != 0 {
-			err = DialErrno(resp[0])
+		errno := resp[0]
+		if err == nil && errno != 0 {
+			err = Errno(errno)
 		}
 		return nil, &net.OpError{Op: "dial", Net: network, Err: err}
 	}
@@ -221,7 +223,8 @@ func (sm *StreamMux) handshakeConn(conn quic.Connection) (*ClientInfo, error) {
 func (sm *StreamMux) serveStream(conn quic.Connection, stm quic.Stream, info *ClientInfo) {
 	lis, err := sm.handshakeStream(stm)
 	if err != nil || lis == nil {
-		_ = stm.Close()
+		err = stm.Close()
+		fmt.Println(err)
 		return
 	}
 
@@ -249,7 +252,8 @@ func (sm *StreamMux) handshakeStream(stm quic.Stream) (*streamListener, error) {
 	port := binary.BigEndian.Uint16(head)
 	lis := sm.lookupListener(port)
 	if lis == nil {
-		_, _ = stm.Write([]byte{byte(ErrPortUnreachable)})
+		_, err = stm.Write([]byte{byte(ErrPortUnreachable)})
+		return nil, ErrPortUnreachable
 	} else {
 		_, err = stm.Write([]byte{0}) // success flag
 	}

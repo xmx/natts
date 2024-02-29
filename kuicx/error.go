@@ -6,30 +6,30 @@ import (
 )
 
 const (
-	_ DialErrno = iota // successful
+	_ Errno = iota // successful
 	ErrPortUnreachable
 	ErrHandshakePacket
-	ErrEstablished
 )
 
 var (
 	ErrServerClosed   = errors.New("vnet: Server closed")
 	ErrListenerClosed = errors.New("vnet: Listener closed")
+
+	errnoStrings = []string{
+		ErrPortUnreachable: "vnet port unreachable",
+		ErrHandshakePacket: "vnet bad handshake packet body",
+	}
 )
 
-type DialErrno byte
+type Errno byte
 
-func (d DialErrno) Error() string {
-	if d == 0 {
-		return "<nil>"
-	} else if errors.Is(d, ErrPortUnreachable) {
-		return "port unreachable"
-	} else if errors.Is(d, ErrHandshakePacket) {
-		return "handshake packet"
-	} else if errors.Is(d, ErrEstablished) {
-		return "establish failed"
+func (e Errno) Error() string {
+	ie := int(e)
+	sz := len(errnoStrings)
+	if e == 0 || ie > sz {
+		str := strconv.FormatInt(int64(sz), 10)
+		return "unknown vnet error code: " + str
 	}
-	str := strconv.FormatInt(int64(d), 10)
 
-	return "unknown errno: " + str
+	return errnoStrings[e]
 }
